@@ -1,0 +1,97 @@
+import re
+import math
+
+def extract_traded_symbol(traded_symbol):
+    # Use regular expression to extract equity name, expiration date, type, and strike
+    match = re.match(r"(\d+)([CP])(\d+)-(\d+)-(\d+)-(\w{1,4})", traded_symbol[::-1])
+    if match:
+        strike = int(match.group(1)[::-1])
+        type = match.group(2)[::-1]
+        year = match.group(3)[::-1]
+        month = match.group(4)[::-1]
+        day = match.group(5)[::-1]
+        equity = match.group(6)[::-1]
+        
+        expiration_date = f"20{year}-{month.zfill(2)}-{day.zfill(2)}"
+        return type, strike, equity, expiration_date
+    else:
+        raise ValueError("Invalid traded symbol format. Please use the format: EQUITY-YY-MM-DD-CPSTRIKE")
+
+def calculate_lot_size(account_balance, derivative_price):
+    max_lot_size = int(account_balance / (0.025 * derivative_price))
+    return max(1, min(max_lot_size, 1))  # Set a maximum of 1 lot and ensure it's at least 1
+
+def adjust_lot_size(account_balance, derivative_price, current_lot_size, strike):
+    value_threshold = 0.025 * account_balance
+    
+    # Initial attempt with 3 contracts
+    value = strike * 3
+
+    while True:
+        if value < value_threshold:
+            current_lot_size += 1
+        elif value > value_threshold:
+            current_lot_size -= 1
+        else:
+            break
+        
+        value = strike * current_lot_size
+        
+        if current_lot_size == 1 or value == value_threshold:
+            break
+
+    return current_lot_size
+
+def enter_position(eEquity, oEquity, expiration_date, strike, eOpen_price, eHigh_price, eLow_price, eClose_price, account_balance):
+    n1 = len(eClose_price) - 1
+    n2, n3, n4, n5, n6 = n1 - 1, n1 - 2, n1 - 3, n1 - 4, n1 - 5
+
+    # Check if closing price of equity (n1) exceeds ALL the closing prices of the prior three candles
+    if eClose_price[n1] > max(eClose_price[n2], eClose_price[n3], eClose_price[n4]):
+        # Check if closing price of equity (n1) exceeds the highs of the prior five candles
+        if eClose_price[n1] > max(eHigh_price[n2], eHigh_price[n3], eHigh_price[n4], eHigh_price[n5], eHigh_price[n6]):
+            # Enter the position
+            eEquity_price = eClose_price[n1]  # Replace this with actual eEquity price retrieval logic
+            lot_size = calculate_lot_size(account_balance, eEquity_price)
+
+            # Adjust lot size iteratively
+            lot_size = adjust_lot_size(account_balance, eEquity_price, lot_size, strike)
+
+            if lot_size > 0:
+                oEquity_price = eClose_price[n1]  # Replace this with actual oEquity price retrieval logic
+                contracts_per_lot = math.ceil(0.025 * account_balance / oEquity_price)
+                print(f"Execute entry for {int(lot_size)} lot(s) of {contracts_per_lot} contract(s) each of {oEquity} on {eEquity} with expiration {expiration_date} and strike {strike} at eEquity price {eEquity_price} and oEquity price {oEquity_price}")
+
+# User input for aggregation period and eEquity
+aggregation_period = int(input("Enter the aggregation period in minutes (e.g., 3): "))
+traded_symbol_input = input("Enter the traded symbol (e.g., AAPL-22-02-28-C123): ")
+type, strike, eEquity, expiration_date = extract_traded_symbol(traded_symbol_input)
+
+# Example usage with open, high, low, close for each candle
+eOpen_price = []
+eHigh_price = []
+eLow_price = []
+eClose_price = []
+
+# Simulating continuous updating and checking at the end of each 3-minute candle
+account_balance = float(input("Enter the account balance: "))  # Replace this with actual account balance retrieval logic
+while True:
+    try:
+        # Simulating the update with new candle data (replace this with actual data input)
+        new_eOpen = round(float(input("Enter the open price for the new candle: ")), 2)
+        new_eHigh = round(float(input("Enter the high price for the new candle: ")), 2)
+        new_eLow = round(float(input("Enter the low price for the new candle: ")), 2)
+        new_eClose = round(float(input("Enter the close price for the new candle: ")), 2)
+        
+        # Append the new candle data
+        eOpen_price.append(new_eOpen)
+        eHigh_price.append(new_eHigh)
+        eLow_price.append(new_eLow)
+        eClose_price.append(new_eClose)
+
+        # Check and enter position at the end of each aggregation period
+        if len(eClose_price) % (aggregation_period // 3) == 0:
+            enter_position(eEquity, oEquity, expiration_date, strike, eOpen_price, eHigh_price, eLow_price, eClose_price, account_balance)
+            
+    except ValueError:
+        print("Please enter valid numeric values with no more than 2 decimal places.")
